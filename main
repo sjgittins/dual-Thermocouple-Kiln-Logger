@@ -61,14 +61,14 @@ def log_data():
                 current_temp_1 = sensor1.temperature
             except Exception as e:
                 print(f"Error reading sensor 1: {e}")
-                current_temp_1 = last_temp_1 if last_temp_1 is not None else 0
+                current_temp_1 = last_temp_1 if last_temp_1 is not None else 69.69
 
             # Read temperature from Sensor 2 with error handling
             try:
                 current_temp_2 = sensor2.temperature
             except Exception as e:
                 print(f"Error reading sensor 2: {e}")
-                current_temp_2 = last_temp_2 if last_temp_2 is not None else 0
+                current_temp_2 = last_temp_2 if last_temp_2 is not None else 69.69
 
             # Append data to lists
             timestamps.append(current_time)
