@@ -1,0 +1,171 @@
+import time
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import board
+import busio
+import digitalio
+from adafruit_max31856 import MAX31856
+from datetime import datetime
+
+# Set up SPI and MAX31856 sensors
+spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
+cs1 = digitalio.DigitalInOut(board.D5)  # Chip select for sensor 1
+cs2 = digitalio.DigitalInOut(board.D6)  # Chip select for sensor 2
+
+sensor1 = MAX31856(spi, cs1)
+sensor2 = MAX31856(spi, cs2)
+
+# Parameters
+interval = 5           # Time interval in seconds
+update_interval = 60   # Time interval to update CSV in seconds
+
+# Lists to store time, temperatures, and rates of change
+timestamps = []
+temperatures_1 = []
+temperatures_2 = []
+rate_of_change_1 = []
+rate_of_change_2 = []
+
+# Initial setup
+last_temp_1 = None
+last_temp_2 = None
+
+# Create a filename based on the current date and time
+current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+filename = f"thermocouple_data_{current_time}.csv"
+
+# Create an initial empty DataFrame for CSV
+columns = ['Time', 'Temperature Sensor 1 (°C)', 'Rate of Change Sensor 1 (°C/s)',
+           'Temperature Sensor 2 (°C)', 'Rate of Change Sensor 2 (°C/s)',
+           'Average Temperature (°C)', 'Average Rate of Change (°C/s)',
+           'Filtered Rate of Change Sensor 1 (°C/s)', 'Filtered Rate of Change Sensor 2 (°C/s)',
+           'Filtered Average Rate of Change (°C/s)']
+initial_data = pd.DataFrame(columns=columns)
+
+# Setup for live plotting
+plt.ion()  # Turn on interactive mode
+fig, axs = plt.subplots(4, 1, figsize=(14, 16))
+plt.subplots_adjust(hspace=0.5)
+
+# Live logging and plotting loop
+def log_data():
+    global last_temp_1, last_temp_2
+    try:
+        while True:
+            # Log the current time and temperature from both sensors
+            current_time = time.time()
+            current_temp_1 = sensor1.temperature
+            current_temp_2 = sensor2.temperature
+
+            # Append data to lists
+            timestamps.append(current_time)
+            temperatures_1.append(current_temp_1)
+            temperatures_2.append(current_temp_2)
+
+            # Calculate rate of change for each sensor
+            if last_temp_1 is not None:
+                change_1 = current_temp_1 - last_temp_1
+                rate_of_change_1.append(change_1 / interval)
+            else:
+                rate_of_change_1.append(0)
+
+            if last_temp_2 is not None:
+                change_2 = current_temp_2 - last_temp_2
+                rate_of_change_2.append(change_2 / interval)
+            else:
+                rate_of_change_2.append(0)
+
+            # Update last temperatures
+            last_temp_1 = current_temp_1
+            last_temp_2 = current_temp_2
+
+            # Wait for the specified interval
+            time.sleep(interval)
+
+            # Check if it's time to update the CSV file
+            if len(timestamps) % update_interval == 0:
+                # Convert timestamps to readable format
+                df = pd.DataFrame({
+                    'Time': pd.to_datetime(timestamps, unit='s'),
+                    'Temperature Sensor 1 (°C)': temperatures_1,
+                    'Rate of Change Sensor 1 (°C/s)': rate_of_change_1,
+                    'Temperature Sensor 2 (°C)': temperatures_2,
+                    'Rate of Change Sensor 2 (°C/s)': rate_of_change_2
+                })
+
+                # Calculate average temperature and average rate of change
+                df['Average Temperature (°C)'] = (df['Temperature Sensor 1 (°C)'] + df['Temperature Sensor 2 (°C)']) / 2
+                df['Average Rate of Change (°C/s)'] = (df['Rate of Change Sensor 1 (°C/s)'] + df['Rate of Change Sensor 2 (°C/s)']) / 2
+
+                # Calculate filtered rate of change from the last minute
+                df['Filtered Rate of Change Sensor 1 (°C/s)'] = df['Rate of Change Sensor 1 (°C/s)'].rolling(window=60).mean().fillna(0)
+                df['Filtered Rate of Change Sensor 2 (°C/s)'] = df['Rate of Change Sensor 2 (°C/s)'].rolling(window=60).mean().fillna(0)
+                df['Filtered Average Rate of Change (°C/s)'] = (df['Filtered Rate of Change Sensor 1 (°C/s)'] + df['Filtered Rate of Change Sensor 2 (°C/s)']) / 2
+
+                # Append to CSV file
+                df.to_csv(filename, mode='a', header=not bool(len(timestamps)), index=False)
+
+            # Live plot update
+            update_plots()
+
+    except KeyboardInterrupt:
+        print("\nLogging stopped by user.")
+        plt.ioff()  # Turn off interactive mode
+        plt.show()  # Show the final plots
+
+def update_plots():
+    # Clear previous plots
+    for ax in axs:
+        ax.cla()
+
+    # Plot 1: Total Temperature vs. Time
+    axs[0].plot(pd.to_datetime(timestamps, unit='s'), temperatures_1, label='Sensor 1 (°C)', color='tab:red')
+    axs[0].plot(pd.to_datetime(timestamps, unit='s'), temperatures_2, label='Sensor 2 (°C)', color='tab:orange')
+    axs[0].set_title('Total Temperature Data from Thermocouples')
+    axs[0].set_xlabel('Time')
+    axs[0].set_ylabel('Temperature (°C)')
+    axs[0].legend()
+    axs[0].grid()
+
+    # Plot 2: Rate of Change vs. Time
+    axs[1].plot(pd.to_datetime(timestamps, unit='s'), rate_of_change_1, label='Rate of Change Sensor 1 (°C/s)', color='tab:red')
+    axs[1].plot(pd.to_datetime(timestamps, unit='s'), rate_of_change_2, label='Rate of Change Sensor 2 (°C/s)', color='tab:orange')
+    axs[1].set_title('Rate of Change of Temperature')
+    axs[1].set_xlabel('Time')
+    axs[1].set_ylabel('Rate of Change (°C/s)')
+    axs[1].legend()
+    axs[1].grid()
+
+    # Get the last 10 minutes of data
+    ten_minutes_ago = pd.to_datetime(timestamps[-1], unit='s') - pd.Timedelta(minutes=10)
+    recent_timestamps = [ts for ts in timestamps if pd.to_datetime(ts, unit='s') >= ten_minutes_ago]
+    recent_temperatures_1 = temperatures_1[-len(recent_timestamps):]
+    recent_temperatures_2 = temperatures_2[-len(recent_timestamps):]
+    recent_rate_of_change_1 = rate_of_change_1[-len(recent_timestamps):]
+    recent_rate_of_change_2 = rate_of_change_2[-len(recent_timestamps):]
+
+    # Plot 3: Recent Temperature vs. Time
+    axs[2].plot(pd.to_datetime(recent_timestamps, unit='s'), recent_temperatures_1, label='Sensor 1 (°C)', color='tab:red')
+    axs[2].plot(pd.to_datetime(recent_timestamps, unit='s'), recent_temperatures_2, label='Sensor 2 (°C)', color='tab:orange')
+    axs[2].set_title('Recent Temperature Data (Last 10 Minutes)')
+    axs[2].set_xlabel('Time')
+    axs[2].set_ylabel('Temperature (°C)')
+    axs[2].legend()
+    axs[2].grid()
+
+    # Plot 4: Recent Rate of Change vs. Time
+    axs[3].plot(pd.to_datetime(recent_timestamps, unit='s'), recent_rate_of_change_1, label='Rate of Change Sensor 1 (°C/s)', color='tab:red')
+    axs[3].plot(pd.to_datetime(recent_timestamps, unit='s'), recent_rate_of_change_2, label='Rate of Change Sensor 2 (°C/s)', color='tab:orange')
+    axs[3].set_title('Recent Rate of Change of Temperature (Last 10 Minutes)')
+    axs[3].set_xlabel('Time')
+    axs[3].set_ylabel('Rate of
+
+ Change (°C/s)')
+    axs[3].legend()
+    axs[3].grid()
+
+    plt.pause(0.1)  # Pause to update the plot
+
+# Start logging and plotting
+log_data()
