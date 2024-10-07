@@ -36,14 +36,6 @@ last_temp_2 = None
 current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
 filename = f"thermocouple_data_{current_time}.csv"
 
-# Create an initial empty DataFrame for CSV
-columns = ['Time', 'Temperature Sensor 1 (°C)', 'Rate of Change Sensor 1 (°C/s)',
-           'Temperature Sensor 2 (°C)', 'Rate of Change Sensor 2 (°C/s)',
-           'Average Temperature (°C)', 'Average Rate of Change (°C/s)',
-           'Filtered Rate of Change Sensor 1 (°C/s)', 'Filtered Rate of Change Sensor 2 (°C/s)',
-           'Filtered Average Rate of Change (°C/s)']
-initial_data = pd.DataFrame(columns=columns)
-
 # Setup for live plotting
 plt.ion()  # Turn on interactive mode
 fig, axs = plt.subplots(4, 1, figsize=(14, 16))
@@ -61,14 +53,14 @@ def log_data():
                 current_temp_1 = sensor1.temperature
             except Exception as e:
                 print(f"Error reading sensor 1: {e}")
-                current_temp_1 = last_temp_1 if last_temp_1 is not None else 69.69
+                current_temp_1 = last_temp_1 if last_temp_1 is not None else 0
 
             # Read temperature from Sensor 2 with error handling
             try:
                 current_temp_2 = sensor2.temperature
             except Exception as e:
                 print(f"Error reading sensor 2: {e}")
-                current_temp_2 = last_temp_2 if last_temp_2 is not None else 69.69
+                current_temp_2 = last_temp_2 if last_temp_2 is not None else 0
 
             # Append data to lists
             timestamps.append(current_time)
@@ -122,12 +114,12 @@ def log_data():
                     print(f"Error updating CSV file: {e}")
 
             # Live plot update
-            update_plots()
+            update_plots(df)
 
     except KeyboardInterrupt:
         print("\nLogging stopped by user.")
         # Save any remaining data
-        if timestamps:
+        if 'df' in locals():
             try:
                 df.to_csv(filename, mode='a', header=not bool(len(timestamps)), index=False)
             except Exception as e:
@@ -137,7 +129,7 @@ def log_data():
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
-def update_plots():
+def update_plots(df):
     # Clear previous plots
     for ax in axs:
         ax.cla()
@@ -167,14 +159,6 @@ def update_plots():
     axs[1].set_ylim(min_rate, max_rate)  # Set dynamic y-limits
     axs[1].legend()
     axs[1].grid()
-
-    # Get the last 10 minutes of data
-    ten_minutes_ago = pd.to_datetime(timestamps[-1], unit='s') - pd.Timedelta(minutes=10)
-    recent_timestamps = [ts for ts in timestamps if pd.to_datetime(ts, unit='s') >= ten_minutes_ago]
-    recent_temperatures_1 = temperatures_1[-len(recent_timestamps):]
-    recent_temperatures_2 = temperatures_2[-len(recent_timestamps):]
-    recent_rate_of_change_1 = rate_of_change_1[-len(recent_timestamps):]
-    recent_rate_of_change_2 = rate_of_change_2[-len(recent_timestamps):]
 
     # Plot 3: Filtered Rate of Change vs. Time
     axs[2].plot(pd.to_datetime(timestamps, unit='s'), df['Filtered Rate of Change Sensor 1 (°C/s)'], label='Filtered Rate of Change Sensor 1 (°C/s)', color='tab:red')
