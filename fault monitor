@@ -1,0 +1,23 @@
+import board
+import digitalio
+import adafruit_max31856
+
+# Create sensor object, communicating over the board's default SPI bus
+spi = board.SPI()
+cs = digitalio.DigitalInOut(board.D5)
+cs.direction = digitalio.Direction.OUTPUT
+
+# Create a thermocouple object
+thermocouple = adafruit_max31856.MAX31856(spi, cs)
+
+# Read and print faults
+faults = thermocouple.fault
+print("Faults:")
+print(f"Open Circuit: {faults['open_tc']}")
+print(f"Voltage Over/Under: {faults['voltage']}")
+print(f"Thermocouple Range: {faults['tc_range']}")
+print(f"Cold Junction Range: {faults['cj_range']}")
+print(f"Thermocouple High: {faults['tc_high']}")
+print(f"Thermocouple Low: {faults['tc_low']}")
+print(f"Cold Junction High: {faults['cj_high']}")
+print(f"Cold Junction Low: {faults['cj_low']}")
